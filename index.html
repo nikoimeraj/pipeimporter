@@ -162,6 +162,138 @@
     }
     window.__pipeImporterInitialized = true;
 
+    // Persist reusable importer state on the window so duplicate script loads reuse the same object
+    if (!window.__pipeImporterState) {
+        window.__pipeImporterState = {
+            orgFields: [],
+            personFields: [],
+            csvData: [],
+            columnMappings: {},
+            organizationSuggestions: {},
+            personSuggestions: {},
+            isFieldsCollapsed: false
+        };
+    }
+
+    const state = window.__pipeImporterState;
+
+    function normalizeNameKey(value) {
+        return value ? value.trim().toLowerCase() : '';
+    }
+
+    function populateMappingOptions(select) {
+        select.innerHTML = '';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '-- Ignore --';
+        select.appendChild(defaultOpt);
+
+        const personOpt = document.createElement('option');
+        personOpt.value = 'person_name';
+        personOpt.textContent = 'Person Name';
+        select.appendChild(personOpt);
+
+        const orgOpt = document.createElement('option');
+        orgOpt.value = 'organization_name';
+        orgOpt.textContent = 'Organization Name';
+        select.appendChild(orgOpt);
+
+        const noteOpt = document.createElement('option');
+        noteOpt.value = 'note';
+        noteOpt.textContent = 'Note';
+        select.appendChild(noteOpt);
+
+        if (state.orgFields.length > 0) {
+            const optgroupOrg = document.createElement('optgroup');
+            optgroupOrg.label = 'Organization Fields';
+            state.orgFields.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = `orgField:${f.key}`;
+                opt.textContent = f.name;
+                optgroupOrg.appendChild(opt);
+            });
+            select.appendChild(optgroupOrg);
+        }
+
+        if (state.personFields.length > 0) {
+            const optgroupPerson = document.createElement('optgroup');
+            optgroupPerson.label = 'Person Fields';
+            state.personFields.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = `personField:${f.key}`;
+                opt.textContent = f.name;
+                optgroupPerson.appendChild(opt);
+            });
+            select.appendChild(optgroupPerson);
+        }
+
+        const addNewOpt = document.createElement('option');
+        addNewOpt.value = 'add_new_field';
+        addNewOpt.textContent = 'Add new field';
+        select.appendChild(addNewOpt);
+    }
+
+    function refreshMappingSelectOptions() {
+        const selects = document.querySelectorAll('.mapping-select');
+        selects.forEach(select => {
+            const column = select.dataset.column;
+            const currentMapping = state.columnMappings[column] || '';
+            populateMappingOptions(select);
+            if (currentMapping && Array.from(select.options).some(opt => opt.value === currentMapping)) {
+                select.value = currentMapping;
+            } else {
+                select.value = '';
+                state.columnMappings[column] = '';
+            }
+            select.dataset.previousValue = select.value;
+        });
+    }
+
+    function toggleFieldsSection() {
+        const fieldsContent = document.getElementById('fieldsContent');
+        const toggleBtn = document.getElementById('toggleFieldsBtn');
+        state.isFieldsCollapsed = !state.isFieldsCollapsed;
+        if (state.isFieldsCollapsed) {
+            fieldsContent.style.display = 'none';
+            toggleBtn.textContent = 'Show Fields';
+            toggleBtn.setAttribute('aria-expanded', 'false');
+        } else {
+            fieldsContent.style.display = 'block';
+            toggleBtn.textContent = 'Hide Fields';
+            toggleBtn.setAttribute('aria-expanded', 'true');
+        }
+    }
+
+    async function fetchFields() {
+        const subdomain = document.getElementById('subdomain').value.trim();
+        const token = document.getElementById('apitoken').value.trim();
+        const statusEl = document.getElementById('connectionStatus');
+        if (!subdomain || !token) {
+            statusEl.textContent = 'Please enter both subdomain and token.';
+            return false;
+        }
+        statusEl.textContent = '';
+        // Fetch organization and person fields concurrently
+        const orgUrl = `https://${subdomain}.pipedrive.com/api/v1/organizationFields?api_token=${token}`;
+        const personUrl = `https://${subdomain}.pipedrive.com/api/v1/personFields?api_token=${token}`;
+        try {
+            const [orgRes, personRes] = await Promise.all([
+                fetch(orgUrl).then(res => res.json()),
+                fetch(personUrl).then(res => res.json())
+            ]);
+            if (orgRes.success && personRes.success) {
+                state.orgFields = orgRes.data;
+                state.personFields = personRes.data;
+                displayFields();
+                refreshMappingSelectOptions();
+                return true;
+            } else {
+                statusEl.textContent = 'Error fetching fields. Please check your credentials and subdomain.';
+                return false;
+            }
+    }
+    window.__pipeImporterInitialized = true;
+
     // Global variables to hold fetched fields and parsed CSV data
     let orgFields = [];
     let personFields = [];
@@ -894,6 +1026,99 @@ async function searchExistingRecords() {
         document.getElementById('orgTabBtn').classList.add('active');
     }
 
+    function displayFields() {
+        const section = document.getElementById('fields-section');
+        const fieldsContent = document.getElementById('fieldsContent');
+        const toggleBtn = document.getElementById('toggleFieldsBtn');
+        // Show fields section
+        section.style.display = 'block';
+        if (state.isFieldsCollapsed) {
+            fieldsContent.style.display = 'none';
+            toggleBtn.textContent = 'Show Fields';
+            toggleBtn.setAttribute('aria-expanded', 'false');
+        } else {
+            fieldsContent.style.display = 'block';
+            toggleBtn.textContent = 'Hide Fields';
+            toggleBtn.setAttribute('aria-expanded', 'true');
+        }
+        // Prepare organization and person tables
+        const orgTable = document.getElementById('orgFieldsTable');
+        const personTable = document.getElementById('personFieldsTable');
+        // Clear existing tables
+        orgTable.innerHTML = '';
+        personTable.innerHTML = '';
+        // Build headers
+        const headerOrg = document.createElement('tr');
+        headerOrg.innerHTML = '<th>Name</th><th>Key</th><th>Type</th>';
+        orgTable.appendChild(headerOrg);
+        const headerPerson = document.createElement('tr');
+        headerPerson.innerHTML = '<th>Name</th><th>Key</th><th>Type</th>';
+        personTable.appendChild(headerPerson);
+        // Populate organization fields
+        state.orgFields.forEach(f => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
+            orgTable.appendChild(row);
+        });
+        // Populate person fields
+        state.personFields.forEach(f => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
+            personTable.appendChild(row);
+        });
+        // Activate default tab (organization) if available
+        document.getElementById('OrgFieldsTab').style.display = 'block';
+        document.getElementById('orgTabBtn').classList.add('active');
+    }
+
+    function parseCSV(file) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            const text = evt.target.result;
+            const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+            if (lines.length === 0) {
+                alert('CSV file is empty.');
+                return;
+            }
+            const header = lines[0].split(',');
+            state.csvData = [];
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(',');
+                const row = {};
+                header.forEach((col, idx) => {
+                    row[col.trim()] = parts[idx] ? parts[idx].trim() : '';
+                });
+                state.csvData.push(row);
+            }
+            displayMappingOptions(header);
+        };
+        reader.readAsText(file);
+    }
+
+    function displayMappingOptions(columns) {
+        const mappingDiv = document.getElementById('csvMappingSection');
+        mappingDiv.innerHTML = '';
+        state.columnMappings = {};
+        const table = document.createElement('table');
+        const headerRow = document.createElement('tr');
+        headerRow.innerHTML = '<th>CSV Column</th><th>Map To</th>';
+        table.appendChild(headerRow);
+        columns.forEach(col => {
+            const row = document.createElement('tr');
+            const colCell = document.createElement('td');
+            colCell.textContent = col;
+            const mapCell = document.createElement('td');
+            const select = document.createElement('select');
+            select.className = 'mapping-select';
+            select.dataset.column = col;
+            populateMappingOptions(select);
+            select.dataset.previousValue = select.value;
+            select.addEventListener('change', async function() {
+                if (this.value === 'add_new_field') {
+                    await handleAddNewField(this, col);
+                }
+                state.columnMappings[col] = this.value;
+                this.dataset.previousValue = this.value;
     function parseCSV(file) {
         const reader = new FileReader();
         reader.onload = function(evt) {
@@ -1015,6 +1240,105 @@ async function pushDataToPipedrive() {
         if (!subdomain || !token) {
             alert('Please enter both subdomain and token before searching.');
             return;
+        }
+        const orgNameCol = Object.keys(state.columnMappings).find(col => state.columnMappings[col] === 'organization_name');
+        const personNameCol = Object.keys(state.columnMappings).find(col => state.columnMappings[col] === 'person_name');
+        if (!orgNameCol && !personNameCol) {
+            alert('Please map a column to "Organization Name" or "Person Name" before searching.');
+            return;
+        }
+        state.organizationSuggestions = {};
+        state.personSuggestions = {};
+        const suggestionContainer = document.getElementById('orgSuggestionSection');
+        const personContainer = document.getElementById('personSuggestionSection');
+        suggestionContainer.innerHTML = '';
+        personContainer.innerHTML = '';
+
+        if (orgNameCol) {
+            const uniqueOrgNames = new Map();
+            state.csvData.forEach(row => {
+                const raw = row[orgNameCol];
+                const key = normalizeNameKey(raw);
+                if (!key) return;
+                if (!uniqueOrgNames.has(key)) {
+                    uniqueOrgNames.set(key, raw.trim());
+                }
+            });
+            if (uniqueOrgNames.size > 0) {
+                const heading = document.createElement('h3');
+                heading.textContent = 'Organization Suggestions';
+                suggestionContainer.appendChild(heading);
+            }
+            for (const [nameKey, name] of uniqueOrgNames.entries()) {
+                try {
+                    const searchTerms = [];
+                    const trimmedName = name.trim();
+                    if (trimmedName) {
+                        searchTerms.push(trimmedName);
+                        const firstWord = trimmedName.split(/\s+/)[0];
+                        if (firstWord && firstWord.length > 1 && !searchTerms.includes(firstWord)) {
+                            searchTerms.push(firstWord);
+                        }
+                    }
+
+                    const suggestions = [];
+                    const seenSuggestionIds = new Set();
+                    for (const term of searchTerms) {
+                        const url = `https://${subdomain}.pipedrive.com/api/v1/organizations/search?term=${encodeURIComponent(term)}&fields=name&limit=5&api_token=${token}`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        if (data.success && data.data && data.data.items) {
+                            data.data.items.forEach(entry => {
+                                const item = entry.item;
+                                if (!item || seenSuggestionIds.has(item.id)) return;
+                                seenSuggestionIds.add(item.id);
+                                suggestions.push(item);
+                            });
+                        }
+                    }
+
+                    state.organizationSuggestions[nameKey] = suggestions;
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-block';
+                    const title = document.createElement('strong');
+                    title.textContent = `Suggestions for "${name}":`;
+                    div.appendChild(title);
+                    const select = document.createElement('select');
+                    select.dataset.name = name;
+                    select.dataset.key = nameKey;
+                    select.dataset.recordType = 'organization';
+                    const newOpt = document.createElement('option');
+                    newOpt.value = 'new';
+                    newOpt.textContent = '-- Create New --';
+                    select.appendChild(newOpt);
+                    suggestions.forEach(item => {
+                        const opt = document.createElement('option');
+                        opt.value = item.id;
+                        opt.textContent = `${item.name} (ID: ${item.id})`;
+                        select.appendChild(opt);
+                    });
+                    div.appendChild(document.createElement('br'));
+                    div.appendChild(select);
+                    const helpText = document.createElement('p');
+                    helpText.className = 'org-selection-help';
+                    helpText.textContent = 'Selecting "-- Create New --" creates a new organization for rows with this name using the mapped organization fields. Choosing an existing organization links those rows to that record and updates its mapped organization fields with the CSV values.';
+                    div.appendChild(helpText);
+                    suggestionContainer.appendChild(div);
+                } catch (err) {
+                    console.error('Error fetching organization suggestions', err);
+                }
+            }
+        }
+
+        if (personNameCol) {
+            const uniquePersonNames = new Map();
+            state.csvData.forEach(row => {
+                const raw = row[personNameCol];
+                const key = normalizeNameKey(raw);
+                if (!key) return;
+                if (!uniquePersonNames.has(key)) {
+                    uniquePersonNames.set(key, raw.trim());
+                }
         }
         const orgNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'organization_name');
         const personNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'person_name');
@@ -1206,6 +1530,7 @@ async function pushDataToPipedrive() {
                             });
                         }
                     }
+                    state.personSuggestions[nameKey] = suggestions;
                     personSuggestions[nameKey] = suggestions;
                     const div = document.createElement('div');
                     div.className = 'suggestion-block';
@@ -1256,6 +1581,12 @@ async function pushDataToPipedrive() {
         personSelects.forEach(sel => {
             selectedPersonMap[sel.dataset.key] = sel.value;
         });
+        for (const row of state.csvData) {
+            let orgId = null;
+            const orgPayload = {};
+            let orgNameValue = '';
+            for (const col in state.columnMappings) {
+                const mapVal = state.columnMappings[col];
         for (const row of csvData) {
             let orgId = null;
             const orgPayload = {};
@@ -1299,6 +1630,8 @@ async function pushDataToPipedrive() {
 
             const personFieldValues = {};
             let personNameValue = '';
+            for (const col in state.columnMappings) {
+                const mapVal = state.columnMappings[col];
             for (const col in columnMappings) {
                 const mapVal = columnMappings[col];
                 const value = row[col];
@@ -1342,6 +1675,7 @@ async function pushDataToPipedrive() {
                 }
             }
 
+            const noteCol = Object.keys(state.columnMappings).find(col => state.columnMappings[col] === 'note');
             const noteCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'note');
             if (noteCol && row[noteCol]) {
                 const notePayload = {
@@ -1363,6 +1697,60 @@ async function pushDataToPipedrive() {
     const fetchFieldsBtn = document.getElementById('fetchFieldsBtn');
     if (fetchFieldsBtn) {
         fetchFieldsBtn.addEventListener('click', fetchFields);
+    }
+
+    const csvFileInput = document.getElementById('csvFileInput');
+    if (csvFileInput) {
+        csvFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                parseCSV(file);
+            }
+        });
+    }
+
+    const toggleFieldsBtn = document.getElementById('toggleFieldsBtn');
+    if (toggleFieldsBtn) {
+        toggleFieldsBtn.addEventListener('click', toggleFieldsSection);
+    }
+
+    const searchRecordsBtn = document.getElementById('searchRecordsBtn');
+    if (searchRecordsBtn) {
+        searchRecordsBtn.addEventListener('click', searchExistingRecords);
+    }
+
+    const pushDataBtn = document.getElementById('pushDataBtn');
+    if (pushDataBtn) {
+        pushDataBtn.addEventListener('click', pushDataToPipedrive);
+    }
+
+    async function createNewField(entityType, name, fieldType) {
+        const subdomain = document.getElementById('subdomain').value.trim();
+        const token = document.getElementById('apitoken').value.trim();
+        if (!subdomain || !token) {
+            alert('Please enter subdomain and API token before adding new fields.');
+            throw new Error('Missing credentials');
+        }
+        const endpoint = entityType === 'organization' ? 'organizationFields' : 'personFields';
+        const url = `https://${subdomain}.pipedrive.com/api/v1/${endpoint}?api_token=${token}`;
+        const payload = {
+            name,
+            field_type: fieldType,
+            add_visible_flag: false
+        };
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.success) {
+            const message = (data && data.error) ? data.error : 'Failed to create field.';
+            throw new Error(message);
+        }
+        return data.data;
+    }
+
     }
 
     const csvFileInput = document.getElementById('csvFileInput');
@@ -1646,6 +2034,7 @@ function openTab(evt, tabName) {
                 return;
             }
             const mappingValue = `${normalizedEntity === 'organization' ? 'orgField' : 'personField'}:${newField.key}`;
+            state.columnMappings[columnName] = mappingValue;
             columnMappings[columnName] = mappingValue;
             const optionExists = Array.from(select.options).some(opt => opt.value === mappingValue);
             if (optionExists) {
