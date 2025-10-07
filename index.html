@@ -43,7 +43,34 @@
             padding: 10px;
             margin-top: 5px;
         }
+        .org-selection-help {
+            margin-top: 6px;
+            font-size: 0.9em;
+            color: #555;
+            line-height: 1.4;
+        }
         /* Tab styles */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .toggle-btn {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 6px 12px;
+        }
+        .toggle-btn:hover {
+            background-color: #0056b3;
+        }
+        .toggle-btn:focus {
+            outline: 2px solid #0056b3;
+            outline-offset: 2px;
+        }
         .tab {
             overflow: hidden;
             border: 1px solid #ccc;
@@ -88,18 +115,23 @@
 </section>
 
 <section id="fields-section" style="display:none;">
-    <h2>Organization &amp; Person Fields</h2>
-    <!-- Tab buttons -->
-    <div class="tab">
-        <button class="tablinks" id="orgTabBtn" onclick="openTab(event, 'OrgFieldsTab')">Organization Fields</button>
-        <button class="tablinks" id="personTabBtn" onclick="openTab(event, 'PersonFieldsTab')">Person Fields</button>
+    <div class="section-header">
+        <h2>Organization &amp; Person Fields</h2>
+        <button type="button" id="toggleFieldsBtn" class="toggle-btn" aria-expanded="true" aria-controls="fieldsContent">Hide Fields</button>
     </div>
-    <!-- Tab content -->
-    <div id="OrgFieldsTab" class="tabcontent">
-        <table id="orgFieldsTable"></table>
-    </div>
-    <div id="PersonFieldsTab" class="tabcontent">
-        <table id="personFieldsTable"></table>
+    <div id="fieldsContent">
+        <!-- Tab buttons -->
+        <div class="tab">
+            <button class="tablinks" id="orgTabBtn" onclick="openTab(event, 'OrgFieldsTab')">Organization Fields</button>
+            <button class="tablinks" id="personTabBtn" onclick="openTab(event, 'PersonFieldsTab')">Person Fields</button>
+        </div>
+        <!-- Tab content -->
+        <div id="OrgFieldsTab" class="tabcontent">
+            <table id="orgFieldsTable"></table>
+        </div>
+        <div id="PersonFieldsTab" class="tabcontent">
+            <table id="personFieldsTable"></table>
+        </div>
     </div>
 </section>
 
@@ -127,40 +159,140 @@ let personFields = [];
 let csvData = [];
 let columnMappings = {}; // mapping of CSV column to field/person/organization
 let organizationSuggestions = {}; // suggestions for each organization name
+let isFieldsCollapsed = false;
 
-function fetchFields() {
+function populateMappingOptions(select) {
+    select.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '-- Ignore --';
+    select.appendChild(defaultOpt);
+
+    const personOpt = document.createElement('option');
+    personOpt.value = 'person_name';
+    personOpt.textContent = 'Person Name';
+    select.appendChild(personOpt);
+
+    const orgOpt = document.createElement('option');
+    orgOpt.value = 'organization_name';
+    orgOpt.textContent = 'Organization Name';
+    select.appendChild(orgOpt);
+
+    const noteOpt = document.createElement('option');
+    noteOpt.value = 'note';
+    noteOpt.textContent = 'Note';
+    select.appendChild(noteOpt);
+
+    if (orgFields.length > 0) {
+        const optgroupOrg = document.createElement('optgroup');
+        optgroupOrg.label = 'Organization Fields';
+        orgFields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = `orgField:${f.key}`;
+            opt.textContent = f.name;
+            optgroupOrg.appendChild(opt);
+        });
+        select.appendChild(optgroupOrg);
+    }
+
+    if (personFields.length > 0) {
+        const optgroupPerson = document.createElement('optgroup');
+        optgroupPerson.label = 'Person Fields';
+        personFields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = `personField:${f.key}`;
+            opt.textContent = f.name;
+            optgroupPerson.appendChild(opt);
+        });
+        select.appendChild(optgroupPerson);
+    }
+
+    const addNewOpt = document.createElement('option');
+    addNewOpt.value = 'add_new_field';
+    addNewOpt.textContent = 'Add new field';
+    select.appendChild(addNewOpt);
+}
+
+function refreshMappingSelectOptions() {
+    const selects = document.querySelectorAll('.mapping-select');
+    selects.forEach(select => {
+        const column = select.dataset.column;
+        const currentMapping = columnMappings[column] || '';
+        populateMappingOptions(select);
+        if (currentMapping && Array.from(select.options).some(opt => opt.value === currentMapping)) {
+            select.value = currentMapping;
+        } else {
+            select.value = '';
+            columnMappings[column] = '';
+        }
+        select.dataset.previousValue = select.value;
+    });
+}
+
+function toggleFieldsSection() {
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
+    isFieldsCollapsed = !isFieldsCollapsed;
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+}
+
+async function fetchFields() {
     const subdomain = document.getElementById('subdomain').value.trim();
     const token = document.getElementById('apitoken').value.trim();
     const statusEl = document.getElementById('connectionStatus');
     if (!subdomain || !token) {
         statusEl.textContent = 'Please enter both subdomain and token.';
-        return;
+        return false;
     }
     statusEl.textContent = '';
     // Fetch organization and person fields concurrently
     const orgUrl = `https://${subdomain}.pipedrive.com/api/v1/organizationFields?api_token=${token}`;
     const personUrl = `https://${subdomain}.pipedrive.com/api/v1/personFields?api_token=${token}`;
-    Promise.all([
-        fetch(orgUrl).then(res => res.json()),
-        fetch(personUrl).then(res => res.json())
-    ]).then(([orgRes, personRes]) => {
+    try {
+        const [orgRes, personRes] = await Promise.all([
+            fetch(orgUrl).then(res => res.json()),
+            fetch(personUrl).then(res => res.json())
+        ]);
         if (orgRes.success && personRes.success) {
             orgFields = orgRes.data;
             personFields = personRes.data;
             displayFields();
+            refreshMappingSelectOptions();
+            return true;
         } else {
             statusEl.textContent = 'Error fetching fields. Please check your credentials and subdomain.';
+            return false;
         }
-    }).catch(err => {
+    } catch (err) {
         console.error(err);
         statusEl.textContent = 'Network error fetching fields.';
-    });
+        return false;
+    }
 }
 
 function displayFields() {
     const section = document.getElementById('fields-section');
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
     // Show fields section
     section.style.display = 'block';
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
     // Prepare organization and person tables
     const orgTable = document.getElementById('orgFieldsTable');
     const personTable = document.getElementById('personFieldsTable');
@@ -218,6 +350,7 @@ function parseCSV(file) {
 function displayMappingOptions(columns) {
     const mappingDiv = document.getElementById('csvMappingSection');
     mappingDiv.innerHTML = '';
+    columnMappings = {};
     const table = document.createElement('table');
     const headerRow = document.createElement('tr');
     headerRow.innerHTML = '<th>CSV Column</th><th>Map To</th>';
@@ -229,50 +362,16 @@ function displayMappingOptions(columns) {
         const mapCell = document.createElement('td');
         const select = document.createElement('select');
         select.className = 'mapping-select';
-        // default option
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = '';
-        defaultOpt.textContent = '-- Ignore --';
-        select.appendChild(defaultOpt);
-        // Person/Organization/Note options
-        const personOpt = document.createElement('option');
-        personOpt.value = 'person_name';
-        personOpt.textContent = 'Person Name';
-        select.appendChild(personOpt);
-        const orgOpt = document.createElement('option');
-        orgOpt.value = 'organization_name';
-        orgOpt.textContent = 'Organization Name';
-        select.appendChild(orgOpt);
-        const noteOpt = document.createElement('option');
-        noteOpt.value = 'note';
-        noteOpt.textContent = 'Note';
-        select.appendChild(noteOpt);
-        // Custom fields options
-        if (orgFields.length > 0) {
-            const optgroupOrg = document.createElement('optgroup');
-            optgroupOrg.label = 'Organization Fields';
-            orgFields.forEach(f => {
-                const opt = document.createElement('option');
-                opt.value = `orgField:${f.key}`;
-                opt.textContent = f.name;
-                optgroupOrg.appendChild(opt);
-            });
-            select.appendChild(optgroupOrg);
-        }
-        if (personFields.length > 0) {
-            const optgroupPerson = document.createElement('optgroup');
-            optgroupPerson.label = 'Person Fields';
-            personFields.forEach(f => {
-                const opt = document.createElement('option');
-                opt.value = `personField:${f.key}`;
-                opt.textContent = f.name;
-                optgroupPerson.appendChild(opt);
-            });
-            select.appendChild(optgroupPerson);
-        }
-        select.onchange = function() {
+        select.dataset.column = col;
+        populateMappingOptions(select);
+        select.dataset.previousValue = select.value;
+        select.addEventListener('change', async function() {
+            if (this.value === 'add_new_field') {
+                await handleAddNewField(this, col);
+            }
             columnMappings[col] = this.value;
-        };
+            this.dataset.previousValue = this.value;
+        });
         mapCell.appendChild(select);
         row.appendChild(colCell);
         row.appendChild(mapCell);
@@ -327,6 +426,10 @@ async function searchExistingOrganizations() {
             });
             div.appendChild(document.createElement('br'));
             div.appendChild(select);
+            const helpText = document.createElement('p');
+            helpText.className = 'org-selection-help';
+            helpText.textContent = 'Selecting "-- Create New --" creates a new organization for rows with this name using the mapped organization fields. Choosing an existing organization links those rows to that record and updates its mapped organization fields with the CSV values.';
+            div.appendChild(helpText);
             suggestionContainer.appendChild(div);
         } catch (err) {
             console.error('Error fetching suggestions', err);
@@ -441,8 +544,85 @@ document.getElementById('csvFileInput').addEventListener('change', function(e) {
         parseCSV(file);
     }
 });
+document.getElementById('toggleFieldsBtn').addEventListener('click', toggleFieldsSection);
 document.getElementById('searchOrgBtn').addEventListener('click', searchExistingOrganizations);
 document.getElementById('pushDataBtn').addEventListener('click', pushDataToPipedrive);
+
+async function createNewField(entityType, name, fieldType) {
+    const subdomain = document.getElementById('subdomain').value.trim();
+    const token = document.getElementById('apitoken').value.trim();
+    if (!subdomain || !token) {
+        alert('Please enter subdomain and API token before adding new fields.');
+        throw new Error('Missing credentials');
+    }
+    const endpoint = entityType === 'organization' ? 'organizationFields' : 'personFields';
+    const url = `https://${subdomain}.pipedrive.com/api/v1/${endpoint}?api_token=${token}`;
+    const payload = {
+        name,
+        field_type: fieldType,
+        add_visible_flag: false
+    };
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.success) {
+        const message = (data && data.error) ? data.error : 'Failed to create field.';
+        throw new Error(message);
+    }
+    return data.data;
+}
+
+async function handleAddNewField(select, columnName) {
+    const previousValue = select.dataset.previousValue || '';
+    const entityInput = prompt('Add field to which record type? Enter "organization" or "person".');
+    if (!entityInput) {
+        select.value = previousValue;
+        return;
+    }
+    const normalizedEntity = entityInput.trim().toLowerCase();
+    if (normalizedEntity !== 'organization' && normalizedEntity !== 'person') {
+        alert('Please enter "organization" or "person".');
+        select.value = previousValue;
+        return;
+    }
+    const nameInput = prompt('Enter a name for the new field:');
+    if (!nameInput || !nameInput.trim()) {
+        alert('Field name is required.');
+        select.value = previousValue;
+        return;
+    }
+    const typeInput = prompt('Enter the field type (e.g., text, varchar, int, double, date, address, phone).');
+    if (!typeInput || !typeInput.trim()) {
+        alert('Field type is required.');
+        select.value = previousValue;
+        return;
+    }
+    try {
+        const newField = await createNewField(normalizedEntity, nameInput.trim(), typeInput.trim());
+        const success = await fetchFields();
+        if (!success) {
+            select.value = previousValue;
+            return;
+        }
+        const mappingValue = `${normalizedEntity === 'organization' ? 'orgField' : 'personField'}:${newField.key}`;
+        columnMappings[columnName] = mappingValue;
+        const optionExists = Array.from(select.options).some(opt => opt.value === mappingValue);
+        if (optionExists) {
+            select.value = mappingValue;
+        }
+        select.dataset.previousValue = select.value;
+        alert(`Field "${nameInput.trim()}" created successfully.`);
+    } catch (err) {
+        console.error('Error creating new field', err);
+        if (err.message && err.message !== 'Missing credentials') {
+            alert(err.message);
+        }
+        select.value = previousValue;
+    }
+}
 
 // Function to handle tab switching for fields section
 function openTab(evt, tabName) {
