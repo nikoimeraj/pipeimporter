@@ -291,11 +291,739 @@
                 statusEl.textContent = 'Error fetching fields. Please check your credentials and subdomain.';
                 return false;
             }
+    }
+    window.__pipeImporterInitialized = true;
+
+    // Global variables to hold fetched fields and parsed CSV data
+    let orgFields = [];
+    let personFields = [];
+    let csvData = [];
+    let columnMappings = {}; // mapping of CSV column to field/person/organization
+    let organizationSuggestions = {}; // suggestions for each organization name
+    let personSuggestions = {}; // suggestions for each person name
+    let isFieldsCollapsed = false;
+
+    function normalizeNameKey(value) {
+        return value ? value.trim().toLowerCase() : '';
+    }
+
+    function populateMappingOptions(select) {
+        select.innerHTML = '';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '-- Ignore --';
+        select.appendChild(defaultOpt);
+
+        const personOpt = document.createElement('option');
+        personOpt.value = 'person_name';
+        personOpt.textContent = 'Person Name';
+        select.appendChild(personOpt);
+
+        const orgOpt = document.createElement('option');
+        orgOpt.value = 'organization_name';
+        orgOpt.textContent = 'Organization Name';
+        select.appendChild(orgOpt);
+
+        const noteOpt = document.createElement('option');
+        noteOpt.value = 'note';
+        noteOpt.textContent = 'Note';
+        select.appendChild(noteOpt);
+
+        if (orgFields.length > 0) {
+            const optgroupOrg = document.createElement('optgroup');
+            optgroupOrg.label = 'Organization Fields';
+            orgFields.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = `orgField:${f.key}`;
+                opt.textContent = f.name;
+                optgroupOrg.appendChild(opt);
+            });
+            select.appendChild(optgroupOrg);
+        }
+
+        if (personFields.length > 0) {
+            const optgroupPerson = document.createElement('optgroup');
+            optgroupPerson.label = 'Person Fields';
+            personFields.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = `personField:${f.key}`;
+                opt.textContent = f.name;
+                optgroupPerson.appendChild(opt);
+            });
+            select.appendChild(optgroupPerson);
+        }
+
+        const addNewOpt = document.createElement('option');
+        addNewOpt.value = 'add_new_field';
+        addNewOpt.textContent = 'Add new field';
+        select.appendChild(addNewOpt);
+    }
+
+    function refreshMappingSelectOptions() {
+        const selects = document.querySelectorAll('.mapping-select');
+        selects.forEach(select => {
+            const column = select.dataset.column;
+            const currentMapping = columnMappings[column] || '';
+            populateMappingOptions(select);
+            if (currentMapping && Array.from(select.options).some(opt => opt.value === currentMapping)) {
+                select.value = currentMapping;
+            } else {
+                select.value = '';
+                columnMappings[column] = '';
+            }
+            select.dataset.previousValue = select.value;
+        });
+    }
+
+    function toggleFieldsSection() {
+        const fieldsContent = document.getElementById('fieldsContent');
+        const toggleBtn = document.getElementById('toggleFieldsBtn');
+        isFieldsCollapsed = !isFieldsCollapsed;
+        if (isFieldsCollapsed) {
+            fieldsContent.style.display = 'none';
+            toggleBtn.textContent = 'Show Fields';
+            toggleBtn.setAttribute('aria-expanded', 'false');
+        } else {
+            fieldsContent.style.display = 'block';
+            toggleBtn.textContent = 'Hide Fields';
+            toggleBtn.setAttribute('aria-expanded', 'true');
+        }
+    }
+
+    async function fetchFields() {
+        const subdomain = document.getElementById('subdomain').value.trim();
+        const token = document.getElementById('apitoken').value.trim();
+        const statusEl = document.getElementById('connectionStatus');
+        if (!subdomain || !token) {
+            statusEl.textContent = 'Please enter both subdomain and token.';
+            return false;
+        }
+        statusEl.textContent = '';
+        // Fetch organization and person fields concurrently
+        const orgUrl = `https://${subdomain}.pipedrive.com/api/v1/organizationFields?api_token=${token}`;
+        const personUrl = `https://${subdomain}.pipedrive.com/api/v1/personFields?api_token=${token}`;
+        try {
+            const [orgRes, personRes] = await Promise.all([
+                fetch(orgUrl).then(res => res.json()),
+                fetch(personUrl).then(res => res.json())
+            ]);
+            if (orgRes.success && personRes.success) {
+                orgFields = orgRes.data;
+                personFields = personRes.data;
+                displayFields();
+                refreshMappingSelectOptions();
+                return true;
+            } else {
+                statusEl.textContent = 'Error fetching fields. Please check your credentials and subdomain.';
+                return false;
+            }
+// Global variables to hold fetched fields and parsed CSV data
+let orgFields = [];
+let personFields = [];
+let csvData = [];
+let columnMappings = {}; // mapping of CSV column to field/person/organization
+let organizationSuggestions = {}; // suggestions for each organization name
+let personSuggestions = {}; // suggestions for each person name
+let isFieldsCollapsed = false;
+
+function normalizeNameKey(value) {
+    return value ? value.trim().toLowerCase() : '';
+}
+
+let isFieldsCollapsed = false;
+
+function populateMappingOptions(select) {
+    select.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '-- Ignore --';
+    select.appendChild(defaultOpt);
+
+    const personOpt = document.createElement('option');
+    personOpt.value = 'person_name';
+    personOpt.textContent = 'Person Name';
+    select.appendChild(personOpt);
+
+    const orgOpt = document.createElement('option');
+    orgOpt.value = 'organization_name';
+    orgOpt.textContent = 'Organization Name';
+    select.appendChild(orgOpt);
+
+    const noteOpt = document.createElement('option');
+    noteOpt.value = 'note';
+    noteOpt.textContent = 'Note';
+    select.appendChild(noteOpt);
+
+    if (orgFields.length > 0) {
+        const optgroupOrg = document.createElement('optgroup');
+        optgroupOrg.label = 'Organization Fields';
+        orgFields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = `orgField:${f.key}`;
+            opt.textContent = f.name;
+            optgroupOrg.appendChild(opt);
+        });
+        select.appendChild(optgroupOrg);
+    }
+
+    if (personFields.length > 0) {
+        const optgroupPerson = document.createElement('optgroup');
+        optgroupPerson.label = 'Person Fields';
+        personFields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = `personField:${f.key}`;
+            opt.textContent = f.name;
+            optgroupPerson.appendChild(opt);
+        });
+        select.appendChild(optgroupPerson);
+    }
+
+    const addNewOpt = document.createElement('option');
+    addNewOpt.value = 'add_new_field';
+    addNewOpt.textContent = 'Add new field';
+    select.appendChild(addNewOpt);
+}
+
+function refreshMappingSelectOptions() {
+    const selects = document.querySelectorAll('.mapping-select');
+    selects.forEach(select => {
+        const column = select.dataset.column;
+        const currentMapping = columnMappings[column] || '';
+        populateMappingOptions(select);
+        if (currentMapping && Array.from(select.options).some(opt => opt.value === currentMapping)) {
+            select.value = currentMapping;
+        } else {
+            select.value = '';
+            columnMappings[column] = '';
+        }
+        select.dataset.previousValue = select.value;
+    });
+}
+
+
+    const orgOpt = document.createElement('option');
+    orgOpt.value = 'organization_name';
+    orgOpt.textContent = 'Organization Name';
+    select.appendChild(orgOpt);
+
+    const noteOpt = document.createElement('option');
+    noteOpt.value = 'note';
+    noteOpt.textContent = 'Note';
+    select.appendChild(noteOpt);
+
+    if (orgFields.length > 0) {
+        const optgroupOrg = document.createElement('optgroup');
+        optgroupOrg.label = 'Organization Fields';
+        orgFields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = `orgField:${f.key}`;
+            opt.textContent = f.name;
+            optgroupOrg.appendChild(opt);
+        });
+        select.appendChild(optgroupOrg);
+    }
+
+    if (personFields.length > 0) {
+        const optgroupPerson = document.createElement('optgroup');
+        optgroupPerson.label = 'Person Fields';
+        personFields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = `personField:${f.key}`;
+            opt.textContent = f.name;
+            optgroupPerson.appendChild(opt);
+        });
+        select.appendChild(optgroupPerson);
+    }
+
+    const addNewOpt = document.createElement('option');
+    addNewOpt.value = 'add_new_field';
+    addNewOpt.textContent = 'Add new field';
+    select.appendChild(addNewOpt);
+}
+
+function refreshMappingSelectOptions() {
+    const selects = document.querySelectorAll('.mapping-select');
+    selects.forEach(select => {
+        const column = select.dataset.column;
+        const currentMapping = columnMappings[column] || '';
+        populateMappingOptions(select);
+        if (currentMapping && Array.from(select.options).some(opt => opt.value === currentMapping)) {
+            select.value = currentMapping;
+        } else {
+            select.value = '';
+            columnMappings[column] = '';
+        }
+        select.dataset.previousValue = select.value;
+    });
+}
+
+function toggleFieldsSection() {
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
+    isFieldsCollapsed = !isFieldsCollapsed;
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+}
+
+    const addNewOpt = document.createElement('option');
+    addNewOpt.value = 'add_new_field';
+    addNewOpt.textContent = 'Add new field';
+    select.appendChild(addNewOpt);
+}
+
+function refreshMappingSelectOptions() {
+    const selects = document.querySelectorAll('.mapping-select');
+    selects.forEach(select => {
+        const column = select.dataset.column;
+        const currentMapping = columnMappings[column] || '';
+        populateMappingOptions(select);
+        if (currentMapping && Array.from(select.options).some(opt => opt.value === currentMapping)) {
+            select.value = currentMapping;
+        } else {
+            select.value = '';
+            columnMappings[column] = '';
+        }
+        select.dataset.previousValue = select.value;
+    });
+}
+
+function toggleFieldsSection() {
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
+    isFieldsCollapsed = !isFieldsCollapsed;
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+}
+
+async function fetchFields() {
+    const subdomain = document.getElementById('subdomain').value.trim();
+    const token = document.getElementById('apitoken').value.trim();
+    const statusEl = document.getElementById('connectionStatus');
+    if (!subdomain || !token) {
+        statusEl.textContent = 'Please enter both subdomain and token.';
+        return false;
+    }
+    statusEl.textContent = '';
+    // Fetch organization and person fields concurrently
+    const orgUrl = `https://${subdomain}.pipedrive.com/api/v1/organizationFields?api_token=${token}`;
+    const personUrl = `https://${subdomain}.pipedrive.com/api/v1/personFields?api_token=${token}`;
+    try {
+        const [orgRes, personRes] = await Promise.all([
+            fetch(orgUrl).then(res => res.json()),
+            fetch(personUrl).then(res => res.json())
+        ]);
+        if (orgRes.success && personRes.success) {
+            orgFields = orgRes.data;
+            personFields = personRes.data;
+            displayFields();
+            refreshMappingSelectOptions();
+            return true;
+        } else {
+            statusEl.textContent = 'Error fetching fields. Please check your credentials and subdomain.';
+            return false;
+        }
+    } catch (err) {
+        console.error(err);
+        statusEl.textContent = 'Network error fetching fields.';
+        return false;
+    }
+}
+
+function displayFields() {
+    const section = document.getElementById('fields-section');
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
+    // Show fields section
+    section.style.display = 'block';
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+    // Prepare organization and person tables
+    const orgTable = document.getElementById('orgFieldsTable');
+    const personTable = document.getElementById('personFieldsTable');
+    // Clear existing tables
+    orgTable.innerHTML = '';
+    personTable.innerHTML = '';
+    // Build headers
+    const headerOrg = document.createElement('tr');
+    headerOrg.innerHTML = '<th>Name</th><th>Key</th><th>Type</th>';
+    orgTable.appendChild(headerOrg);
+    const headerPerson = document.createElement('tr');
+    headerPerson.innerHTML = '<th>Name</th><th>Key</th><th>Type</th>';
+    personTable.appendChild(headerPerson);
+    // Populate organization fields
+    orgFields.forEach(f => {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
+        orgTable.appendChild(row);
+    });
+    // Populate person fields
+    personFields.forEach(f => {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
+        personTable.appendChild(row);
+    });
+    // Activate default tab (organization) if available
+    document.getElementById('OrgFieldsTab').style.display = 'block';
+    document.getElementById('orgTabBtn').classList.add('active');
+}
+
+function parseCSV(file) {
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        const text = evt.target.result;
+        const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+        if (lines.length === 0) {
+            alert('CSV file is empty.');
+            return;
+        }
+        const header = lines[0].split(',');
+        csvData = [];
+        for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(',');
+            const row = {};
+            header.forEach((col, idx) => {
+                row[col.trim()] = parts[idx] ? parts[idx].trim() : '';
+            });
+            csvData.push(row);
+        }
+        displayMappingOptions(header);
+    };
+    reader.readAsText(file);
+}
+
+function displayMappingOptions(columns) {
+    const mappingDiv = document.getElementById('csvMappingSection');
+    mappingDiv.innerHTML = '';
+    columnMappings = {};
+    const table = document.createElement('table');
+    const headerRow = document.createElement('tr');
+    headerRow.innerHTML = '<th>CSV Column</th><th>Map To</th>';
+    table.appendChild(headerRow);
+    columns.forEach(col => {
+        const row = document.createElement('tr');
+        const colCell = document.createElement('td');
+        colCell.textContent = col;
+        const mapCell = document.createElement('td');
+        const select = document.createElement('select');
+        select.className = 'mapping-select';
+        select.dataset.column = col;
+        populateMappingOptions(select);
+        select.dataset.previousValue = select.value;
+        select.addEventListener('change', async function() {
+            if (this.value === 'add_new_field') {
+                await handleAddNewField(this, col);
+            }
+            columnMappings[col] = this.value;
+            this.dataset.previousValue = this.value;
+        });
+        mapCell.appendChild(select);
+        row.appendChild(colCell);
+        row.appendChild(mapCell);
+        table.appendChild(row);
+    });
+    mappingDiv.appendChild(table);
+    // Show search and push sections
+    document.getElementById('search-section').style.display = 'block';
+    document.getElementById('push-section').style.display = 'block';
+}
+
+async function searchExistingRecords() {
+    const subdomain = document.getElementById('subdomain').value.trim();
+    const token = document.getElementById('apitoken').value.trim();
+    if (!subdomain || !token) {
+        alert('Please enter both subdomain and token before searching.');
+        return;
+    }
+    const orgNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'organization_name');
+    const personNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'person_name');
+    if (!orgNameCol && !personNameCol) {
+        alert('Please map a column to "Organization Name" or "Person Name" before searching.');
+        return;
+    }
+    organizationSuggestions = {};
+    personSuggestions = {};
+    const suggestionContainer = document.getElementById('orgSuggestionSection');
+    const personContainer = document.getElementById('personSuggestionSection');
+    suggestionContainer.innerHTML = '';
+    personContainer.innerHTML = '';
+
+    if (orgNameCol) {
+        const uniqueOrgNames = new Map();
+        csvData.forEach(row => {
+            const raw = row[orgNameCol];
+            const key = normalizeNameKey(raw);
+            if (!key) return;
+            if (!uniqueOrgNames.has(key)) {
+                uniqueOrgNames.set(key, raw.trim());
+            }
+        });
+        if (uniqueOrgNames.size > 0) {
+            const heading = document.createElement('h3');
+            heading.textContent = 'Organization Suggestions';
+            suggestionContainer.appendChild(heading);
+        }
+        for (const [nameKey, name] of uniqueOrgNames.entries()) {
+            try {
+                const searchTerms = [];
+                const trimmedName = name.trim();
+                if (trimmedName) {
+                    searchTerms.push(trimmedName);
+                    const firstWord = trimmedName.split(/\s+/)[0];
+                    if (firstWord && firstWord.length > 1 && !searchTerms.includes(firstWord)) {
+                        searchTerms.push(firstWord);
+                    }
+                }
+
+                const suggestions = [];
+                const seenSuggestionIds = new Set();
+                for (const term of searchTerms) {
+                    const url = `https://${subdomain}.pipedrive.com/api/v1/organizations/search?term=${encodeURIComponent(term)}&fields=name&limit=5&api_token=${token}`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if (data.success && data.data && data.data.items) {
+                        data.data.items.forEach(entry => {
+                            const item = entry.item;
+                            if (!item || seenSuggestionIds.has(item.id)) return;
+                            seenSuggestionIds.add(item.id);
+                            suggestions.push(item);
+                        });
+                    }
+                }
+
+                organizationSuggestions[nameKey] = suggestions;
+                const div = document.createElement('div');
+                div.className = 'suggestion-block';
+                const title = document.createElement('strong');
+                title.textContent = `Suggestions for "${name}":`;
+                div.appendChild(title);
+                const select = document.createElement('select');
+                select.dataset.name = name;
+                select.dataset.key = nameKey;
+                select.dataset.recordType = 'organization';
+                const newOpt = document.createElement('option');
+                newOpt.value = 'new';
+                newOpt.textContent = '-- Create New --';
+                select.appendChild(newOpt);
+                suggestions.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    opt.textContent = `${item.name} (ID: ${item.id})`;
+                    select.appendChild(opt);
+                });
+                div.appendChild(document.createElement('br'));
+                div.appendChild(select);
+                const helpText = document.createElement('p');
+                helpText.className = 'org-selection-help';
+                helpText.textContent = 'Selecting "-- Create New --" creates a new organization for rows with this name using the mapped organization fields. Choosing an existing organization links those rows to that record and updates its mapped organization fields with the CSV values.';
+                div.appendChild(helpText);
+                suggestionContainer.appendChild(div);
+            } catch (err) {
+                console.error('Error fetching organization suggestions', err);
+            }
+        }
+    }
+
+    if (personNameCol) {
+        const uniquePersonNames = new Map();
+        csvData.forEach(row => {
+            const raw = row[personNameCol];
+            const key = normalizeNameKey(raw);
+            if (!key) return;
+            if (!uniquePersonNames.has(key)) {
+                uniquePersonNames.set(key, raw.trim());
+            }
+        });
+        if (uniquePersonNames.size > 0) {
+            const heading = document.createElement('h3');
+            heading.textContent = 'Person Suggestions';
+            personContainer.appendChild(heading);
+        }
+        for (const [nameKey, name] of uniquePersonNames.entries()) {
+            try {
+                const searchTerms = [];
+                const trimmedName = name.trim();
+                if (trimmedName) {
+                    searchTerms.push(trimmedName);
+                    const words = trimmedName.split(/\s+/).filter(Boolean);
+                    words.forEach(word => {
+                        if (word.length > 1 && !searchTerms.includes(word)) {
+                            searchTerms.push(word);
+                        }
+                    });
+                }
+                const suggestions = [];
+                const seenSuggestionIds = new Set();
+                for (const term of searchTerms) {
+                    const url = `https://${subdomain}.pipedrive.com/api/v1/persons/search?term=${encodeURIComponent(term)}&fields=name&limit=5&api_token=${token}`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if (data.success && data.data && data.data.items) {
+                        data.data.items.forEach(entry => {
+                            const item = entry.item;
+                            if (!item || seenSuggestionIds.has(item.id)) return;
+                            seenSuggestionIds.add(item.id);
+                            suggestions.push(item);
+                        });
+                    }
+                }
+                personSuggestions[nameKey] = suggestions;
+                const div = document.createElement('div');
+                div.className = 'suggestion-block';
+                const title = document.createElement('strong');
+                title.textContent = `Suggestions for "${name}":`;
+                div.appendChild(title);
+                const select = document.createElement('select');
+                select.dataset.name = name;
+                select.dataset.key = nameKey;
+                select.dataset.recordType = 'person';
+                const newOpt = document.createElement('option');
+                newOpt.value = 'new';
+                newOpt.textContent = '-- Create New --';
+                select.appendChild(newOpt);
+                suggestions.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    const orgName = item.organization ? (item.organization.name || item.organization) : null;
+                    opt.textContent = orgName ? `${item.name} (ID: ${item.id}, Org: ${orgName})` : `${item.name} (ID: ${item.id})`;
+                    select.appendChild(opt);
+                });
+                div.appendChild(document.createElement('br'));
+                div.appendChild(select);
+                const helpText = document.createElement('p');
+                helpText.className = 'org-selection-help';
+                helpText.textContent = 'Selecting "-- Create New --" creates a new person for rows with this name using the mapped person fields and links them to the mapped organization. Choosing an existing person links those rows to that record without changing the person\'s name while updating other mapped person fields.';
+                div.appendChild(helpText);
+                personContainer.appendChild(div);
+            } catch (err) {
+                console.error('Error fetching person suggestions', err);
+            }
+            }
+    for (const name of uniqueNames) {
+        try {
+            const searchTerms = [];
+            const trimmedName = name.trim();
+            if (trimmedName) {
+                searchTerms.push(trimmedName);
+                const firstWord = trimmedName.split(/\s+/)[0];
+                if (firstWord && firstWord.length > 1 && !searchTerms.includes(firstWord)) {
+                    searchTerms.push(firstWord);
+                }
+            }
+
+            const suggestions = [];
+            const seenSuggestionIds = new Set();
+            for (const term of searchTerms) {
+                const url = `https://${subdomain}.pipedrive.com/api/v1/organizations/search?term=${encodeURIComponent(term)}&fields=name&limit=5&api_token=${token}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.success && data.data && data.data.items) {
+                    data.data.items.forEach(entry => {
+                        const item = entry.item;
+                        if (!item || seenSuggestionIds.has(item.id)) return;
+                        seenSuggestionIds.add(item.id);
+                        suggestions.push(item);
+                    });
+                }
+            }
+
+            organizationSuggestions[name] = suggestions;
+            // Render suggestion block
+            const div = document.createElement('div');
+            div.className = 'org-suggestion';
+            const title = document.createElement('strong');
+            title.textContent = `Suggestions for "${name}":`;
+            div.appendChild(title);
+            const select = document.createElement('select');
+            select.dataset.name = name;
+            // first option for new organization
+            const newOpt = document.createElement('option');
+            newOpt.value = 'new';
+            newOpt.textContent = '-- Create New --';
+            select.appendChild(newOpt);
+            suggestions.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.id;
+                opt.textContent = `${item.name} (ID: ${item.id})`;
+                select.appendChild(opt);
+            });
+            div.appendChild(document.createElement('br'));
+            div.appendChild(select);
+            const helpText = document.createElement('p');
+            helpText.className = 'org-selection-help';
+            helpText.textContent = 'Selecting "-- Create New --" creates a new organization for rows with this name using the mapped organization fields. Choosing an existing organization links those rows to that record and updates its mapped organization fields with the CSV values.';
+            div.appendChild(helpText);
+            suggestionContainer.appendChild(div);
         } catch (err) {
             console.error(err);
             statusEl.textContent = 'Network error fetching fields.';
             return false;
         }
+    }
+
+    function displayFields() {
+        const section = document.getElementById('fields-section');
+        const fieldsContent = document.getElementById('fieldsContent');
+        const toggleBtn = document.getElementById('toggleFieldsBtn');
+        // Show fields section
+        section.style.display = 'block';
+        if (isFieldsCollapsed) {
+            fieldsContent.style.display = 'none';
+            toggleBtn.textContent = 'Show Fields';
+            toggleBtn.setAttribute('aria-expanded', 'false');
+        } else {
+            fieldsContent.style.display = 'block';
+            toggleBtn.textContent = 'Hide Fields';
+            toggleBtn.setAttribute('aria-expanded', 'true');
+        }
+        // Prepare organization and person tables
+        const orgTable = document.getElementById('orgFieldsTable');
+        const personTable = document.getElementById('personFieldsTable');
+        // Clear existing tables
+        orgTable.innerHTML = '';
+        personTable.innerHTML = '';
+        // Build headers
+        const headerOrg = document.createElement('tr');
+        headerOrg.innerHTML = '<th>Name</th><th>Key</th><th>Type</th>';
+        orgTable.appendChild(headerOrg);
+        const headerPerson = document.createElement('tr');
+        headerPerson.innerHTML = '<th>Name</th><th>Key</th><th>Type</th>';
+        personTable.appendChild(headerPerson);
+        // Populate organization fields
+        orgFields.forEach(f => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
+            orgTable.appendChild(row);
+        });
+        // Populate person fields
+        personFields.forEach(f => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
+            personTable.appendChild(row);
+        });
+        // Activate default tab (organization) if available
+        document.getElementById('OrgFieldsTab').style.display = 'block';
+        document.getElementById('orgTabBtn').classList.add('active');
     }
 
     function displayFields() {
@@ -391,6 +1119,109 @@
                 }
                 state.columnMappings[col] = this.value;
                 this.dataset.previousValue = this.value;
+    function parseCSV(file) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            const text = evt.target.result;
+            const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+            if (lines.length === 0) {
+                alert('CSV file is empty.');
+                return;
+            }
+            const header = lines[0].split(',');
+            csvData = [];
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(',');
+                const row = {};
+                header.forEach((col, idx) => {
+                    row[col.trim()] = parts[idx] ? parts[idx].trim() : '';
+                });
+                csvData.push(row);
+            }
+            displayMappingOptions(header);
+        };
+        reader.readAsText(file);
+    }
+
+    function displayMappingOptions(columns) {
+        const mappingDiv = document.getElementById('csvMappingSection');
+        mappingDiv.innerHTML = '';
+        columnMappings = {};
+        const table = document.createElement('table');
+        const headerRow = document.createElement('tr');
+        headerRow.innerHTML = '<th>CSV Column</th><th>Map To</th>';
+        table.appendChild(headerRow);
+        columns.forEach(col => {
+            const row = document.createElement('tr');
+            const colCell = document.createElement('td');
+            colCell.textContent = col;
+            const mapCell = document.createElement('td');
+            const select = document.createElement('select');
+            select.className = 'mapping-select';
+            select.dataset.column = col;
+            populateMappingOptions(select);
+            select.dataset.previousValue = select.value;
+            select.addEventListener('change', async function() {
+                if (this.value === 'add_new_field') {
+                    await handleAddNewField(this, col);
+                }
+                columnMappings[col] = this.value;
+                this.dataset.previousValue = this.value;
+}
+
+async function pushDataToPipedrive() {
+    const subdomain = document.getElementById('subdomain').value.trim();
+    const token = document.getElementById('apitoken').value.trim();
+    const pushStatus = document.getElementById('pushStatus');
+    pushStatus.textContent = 'Processing...';
+    const orgSelects = document.querySelectorAll('#orgSuggestionSection select[data-record-type="organization"]');
+    const personSelects = document.querySelectorAll('#personSuggestionSection select[data-record-type="person"]');
+    const selectedOrgMap = {};
+    const selectedPersonMap = {};
+    orgSelects.forEach(sel => {
+        selectedOrgMap[sel.dataset.key] = sel.value;
+    });
+    personSelects.forEach(sel => {
+        selectedPersonMap[sel.dataset.key] = sel.value;
+    });
+    for (const row of csvData) {
+        let orgId = null;
+        const orgPayload = {};
+        let orgNameValue = '';
+        for (const col in columnMappings) {
+            const mapVal = columnMappings[col];
+            const value = row[col];
+            if (!value) continue;
+            if (mapVal === 'organization_name') {
+                orgNameValue = value.trim();
+                const choice = selectedOrgMap[normalizeNameKey(value)];
+                if (choice && choice !== 'new') {
+                    orgId = choice;
+                } else if (orgNameValue) {
+                    orgPayload.name = orgNameValue;
+                }
+            } else if (mapVal && mapVal.startsWith('orgField:')) {
+                const fieldKey = mapVal.split(':')[1];
+                orgPayload[fieldKey] = value;
+            }
+        }
+        if (!orgId && orgPayload.name) {
+            const createOrgUrl = `https://${subdomain}.pipedrive.com/api/v1/organizations?api_token=${token}`;
+            const res = await fetch(createOrgUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orgPayload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                orgId = data.data.id;
+            }
+        } else if (orgId && Object.keys(orgPayload).length > 0) {
+            const updateOrgUrl = `https://${subdomain}.pipedrive.com/api/v1/organizations/${orgId}?api_token=${token}`;
+            await fetch(updateOrgUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orgPayload)
             });
             mapCell.appendChild(select);
             row.appendChild(colCell);
@@ -508,6 +1339,163 @@
                 if (!uniquePersonNames.has(key)) {
                     uniquePersonNames.set(key, raw.trim());
                 }
+        }
+        const orgNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'organization_name');
+        const personNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'person_name');
+        if (!orgNameCol && !personNameCol) {
+            alert('Please map a column to "Organization Name" or "Person Name" before searching.');
+            return;
+        }
+        organizationSuggestions = {};
+        personSuggestions = {};
+        const suggestionContainer = document.getElementById('orgSuggestionSection');
+        const personContainer = document.getElementById('personSuggestionSection');
+        suggestionContainer.innerHTML = '';
+        personContainer.innerHTML = '';
+
+        if (orgNameCol) {
+            const uniqueOrgNames = new Map();
+            csvData.forEach(row => {
+                const raw = row[orgNameCol];
+                const key = normalizeNameKey(raw);
+                if (!key) return;
+                if (!uniqueOrgNames.has(key)) {
+                    uniqueOrgNames.set(key, raw.trim());
+                }
+            });
+            if (uniqueOrgNames.size > 0) {
+                const heading = document.createElement('h3');
+                heading.textContent = 'Organization Suggestions';
+                suggestionContainer.appendChild(heading);
+            }
+            for (const [nameKey, name] of uniqueOrgNames.entries()) {
+                try {
+                    const searchTerms = [];
+                    const trimmedName = name.trim();
+                    if (trimmedName) {
+                        searchTerms.push(trimmedName);
+                        const firstWord = trimmedName.split(/\s+/)[0];
+                        if (firstWord && firstWord.length > 1 && !searchTerms.includes(firstWord)) {
+                            searchTerms.push(firstWord);
+                        }
+                    }
+
+                    const suggestions = [];
+                    const seenSuggestionIds = new Set();
+                    for (const term of searchTerms) {
+                        const url = `https://${subdomain}.pipedrive.com/api/v1/organizations/search?term=${encodeURIComponent(term)}&fields=name&limit=5&api_token=${token}`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        if (data.success && data.data && data.data.items) {
+                            data.data.items.forEach(entry => {
+                                const item = entry.item;
+                                if (!item || seenSuggestionIds.has(item.id)) return;
+                                seenSuggestionIds.add(item.id);
+                                suggestions.push(item);
+                            });
+                        }
+                    }
+
+                    organizationSuggestions[nameKey] = suggestions;
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-block';
+                    const title = document.createElement('strong');
+                    title.textContent = `Suggestions for "${name}":`;
+                    div.appendChild(title);
+                    const select = document.createElement('select');
+                    select.dataset.name = name;
+                    select.dataset.key = nameKey;
+                    select.dataset.recordType = 'organization';
+                    const newOpt = document.createElement('option');
+                    newOpt.value = 'new';
+                    newOpt.textContent = '-- Create New --';
+                    select.appendChild(newOpt);
+                    suggestions.forEach(item => {
+                        const opt = document.createElement('option');
+                        opt.value = item.id;
+                        opt.textContent = `${item.name} (ID: ${item.id})`;
+                        select.appendChild(opt);
+                    });
+                    div.appendChild(document.createElement('br'));
+                    div.appendChild(select);
+                    const helpText = document.createElement('p');
+                    helpText.className = 'org-selection-help';
+                    helpText.textContent = 'Selecting "-- Create New --" creates a new organization for rows with this name using the mapped organization fields. Choosing an existing organization links those rows to that record and updates its mapped organization fields with the CSV values.';
+                    div.appendChild(helpText);
+                    suggestionContainer.appendChild(div);
+                } catch (err) {
+                    console.error('Error fetching organization suggestions', err);
+                }
+            }
+        }
+
+        if (personNameCol) {
+            const uniquePersonNames = new Map();
+            csvData.forEach(row => {
+                const raw = row[personNameCol];
+                const key = normalizeNameKey(raw);
+                if (!key) return;
+                if (!uniquePersonNames.has(key)) {
+                    uniquePersonNames.set(key, raw.trim());
+                }
+
+        const personFieldValues = {};
+        let personNameValue = '';
+        for (const col in columnMappings) {
+            const mapVal = columnMappings[col];
+            const value = row[col];
+            if (!value) continue;
+            if (mapVal === 'person_name') {
+                personNameValue = value.trim();
+            } else if (mapVal && mapVal.startsWith('personField:')) {
+                const fieldKey = mapVal.split(':')[1];
+                personFieldValues[fieldKey] = value;
+            }
+        }
+        let personId = null;
+        if (personNameValue) {
+            const personChoice = selectedPersonMap[normalizeNameKey(personNameValue)];
+            if (personChoice && personChoice !== 'new') {
+                personId = personChoice;
+                const updatePayload = { ...personFieldValues };
+                if (orgId) updatePayload.org_id = orgId;
+                if (Object.keys(updatePayload).length > 0) {
+                    const updatePersonUrl = `https://${subdomain}.pipedrive.com/api/v1/persons/${personId}?api_token=${token}`;
+                    await fetch(updatePersonUrl, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updatePayload)
+                    });
+                }
+            } else {
+                const createPayload = { ...personFieldValues };
+                createPayload.name = personNameValue;
+                if (orgId) createPayload.org_id = orgId;
+                const createPersonUrl = `https://${subdomain}.pipedrive.com/api/v1/persons?api_token=${token}`;
+                const res = await fetch(createPersonUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(createPayload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    personId = data.data.id;
+                }
+            }
+        }
+
+        const noteCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'note');
+        if (noteCol && row[noteCol]) {
+            const notePayload = {
+                content: row[noteCol]
+            };
+            if (personId) notePayload.person_id = personId;
+            else if (orgId) notePayload.org_id = orgId;
+            const noteUrl = `https://${subdomain}.pipedrive.com/api/v1/notes?api_token=${token}`;
+            await fetch(noteUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(notePayload)
             });
             if (uniquePersonNames.size > 0) {
                 const heading = document.createElement('h3');
@@ -543,6 +1531,7 @@
                         }
                     }
                     state.personSuggestions[nameKey] = suggestions;
+                    personSuggestions[nameKey] = suggestions;
                     const div = document.createElement('div');
                     div.className = 'suggestion-block';
                     const title = document.createElement('strong');
@@ -598,6 +1587,12 @@
             let orgNameValue = '';
             for (const col in state.columnMappings) {
                 const mapVal = state.columnMappings[col];
+        for (const row of csvData) {
+            let orgId = null;
+            const orgPayload = {};
+            let orgNameValue = '';
+            for (const col in columnMappings) {
+                const mapVal = columnMappings[col];
                 const value = row[col];
                 if (!value) continue;
                 if (mapVal === 'organization_name') {
@@ -637,6 +1632,8 @@
             let personNameValue = '';
             for (const col in state.columnMappings) {
                 const mapVal = state.columnMappings[col];
+            for (const col in columnMappings) {
+                const mapVal = columnMappings[col];
                 const value = row[col];
                 if (!value) continue;
                 if (mapVal === 'person_name') {
@@ -679,6 +1676,7 @@
             }
 
             const noteCol = Object.keys(state.columnMappings).find(col => state.columnMappings[col] === 'note');
+            const noteCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'note');
             if (noteCol && row[noteCol]) {
                 const notePayload = {
                     content: row[noteCol]
@@ -753,6 +1751,256 @@
         return data.data;
     }
 
+    }
+
+    const csvFileInput = document.getElementById('csvFileInput');
+    if (csvFileInput) {
+        csvFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                parseCSV(file);
+            }
+        });
+    }
+
+    const toggleFieldsBtn = document.getElementById('toggleFieldsBtn');
+    if (toggleFieldsBtn) {
+        toggleFieldsBtn.addEventListener('click', toggleFieldsSection);
+    }
+
+    const searchRecordsBtn = document.getElementById('searchRecordsBtn');
+    if (searchRecordsBtn) {
+        searchRecordsBtn.addEventListener('click', searchExistingRecords);
+    }
+
+    const pushDataBtn = document.getElementById('pushDataBtn');
+    if (pushDataBtn) {
+        pushDataBtn.addEventListener('click', pushDataToPipedrive);
+    pushStatus.textContent = 'Data push completed.';
+}
+
+const fetchFieldsBtn = document.getElementById('fetchFieldsBtn');
+if (fetchFieldsBtn) {
+    fetchFieldsBtn.addEventListener('click', fetchFields);
+}
+
+const csvFileInput = document.getElementById('csvFileInput');
+if (csvFileInput) {
+    csvFileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            parseCSV(file);
+        }
+    });
+}
+
+const toggleFieldsBtn = document.getElementById('toggleFieldsBtn');
+if (toggleFieldsBtn) {
+    toggleFieldsBtn.addEventListener('click', toggleFieldsSection);
+}
+
+const searchRecordsBtn = document.getElementById('searchRecordsBtn');
+if (searchRecordsBtn) {
+    searchRecordsBtn.addEventListener('click', searchExistingRecords);
+}
+
+const pushDataBtn = document.getElementById('pushDataBtn');
+if (pushDataBtn) {
+    pushDataBtn.addEventListener('click', pushDataToPipedrive);
+}
+
+async function createNewField(entityType, name, fieldType) {
+    const subdomain = document.getElementById('subdomain').value.trim();
+    const token = document.getElementById('apitoken').value.trim();
+    if (!subdomain || !token) {
+        alert('Please enter subdomain and API token before adding new fields.');
+        throw new Error('Missing credentials');
+    }
+    const endpoint = entityType === 'organization' ? 'organizationFields' : 'personFields';
+    const url = `https://${subdomain}.pipedrive.com/api/v1/${endpoint}?api_token=${token}`;
+    const payload = {
+        name,
+        field_type: fieldType,
+        add_visible_flag: false
+    };
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.success) {
+        const message = (data && data.error) ? data.error : 'Failed to create field.';
+        throw new Error(message);
+    }
+    return data.data;
+}
+
+async function handleAddNewField(select, columnName) {
+    const previousValue = select.dataset.previousValue || '';
+    const entityInput = prompt('Add field to which record type? Enter "organization" or "person".');
+    if (!entityInput) {
+        select.value = previousValue;
+        return;
+    }
+    const normalizedEntity = entityInput.trim().toLowerCase();
+    if (normalizedEntity !== 'organization' && normalizedEntity !== 'person') {
+        alert('Please enter "organization" or "person".');
+        select.value = previousValue;
+        return;
+    }
+    const nameInput = prompt('Enter a name for the new field:');
+    if (!nameInput || !nameInput.trim()) {
+        alert('Field name is required.');
+        select.value = previousValue;
+        return;
+    }
+    const typeInput = prompt('Enter the field type (e.g., text, varchar, int, double, date, address, phone).');
+    if (!typeInput || !typeInput.trim()) {
+        alert('Field type is required.');
+        select.value = previousValue;
+        return;
+    }
+    try {
+        const newField = await createNewField(normalizedEntity, nameInput.trim(), typeInput.trim());
+        const success = await fetchFields();
+        if (!success) {
+            select.value = previousValue;
+            return;
+        }
+        const mappingValue = `${normalizedEntity === 'organization' ? 'orgField' : 'personField'}:${newField.key}`;
+        columnMappings[columnName] = mappingValue;
+        const optionExists = Array.from(select.options).some(opt => opt.value === mappingValue);
+        if (optionExists) {
+            select.value = mappingValue;
+        }
+        select.dataset.previousValue = select.value;
+        alert(`Field "${nameInput.trim()}" created successfully.`);
+    } catch (err) {
+        console.error('Error creating new field', err);
+        if (err.message && err.message !== 'Missing credentials') {
+            alert(err.message);
+        }
+        select.value = previousValue;
+    }
+}
+});
+document.getElementById('toggleFieldsBtn').addEventListener('click', toggleFieldsSection);
+document.getElementById('searchRecordsBtn').addEventListener('click', searchExistingRecords);
+document.getElementById('searchOrgBtn').addEventListener('click', searchExistingOrganizations);
+document.getElementById('pushDataBtn').addEventListener('click', pushDataToPipedrive);
+
+async function createNewField(entityType, name, fieldType) {
+    const subdomain = document.getElementById('subdomain').value.trim();
+    const token = document.getElementById('apitoken').value.trim();
+    if (!subdomain || !token) {
+        alert('Please enter subdomain and API token before adding new fields.');
+        throw new Error('Missing credentials');
+    }
+    const endpoint = entityType === 'organization' ? 'organizationFields' : 'personFields';
+    const url = `https://${subdomain}.pipedrive.com/api/v1/${endpoint}?api_token=${token}`;
+    const payload = {
+        name,
+        field_type: fieldType,
+        add_visible_flag: false
+    };
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.success) {
+        const message = (data && data.error) ? data.error : 'Failed to create field.';
+        throw new Error(message);
+    }
+    return data.data;
+}
+
+async function handleAddNewField(select, columnName) {
+    const previousValue = select.dataset.previousValue || '';
+    const entityInput = prompt('Add field to which record type? Enter "organization" or "person".');
+    if (!entityInput) {
+        select.value = previousValue;
+        return;
+    }
+    const normalizedEntity = entityInput.trim().toLowerCase();
+    if (normalizedEntity !== 'organization' && normalizedEntity !== 'person') {
+        alert('Please enter "organization" or "person".');
+        select.value = previousValue;
+        return;
+    }
+    const nameInput = prompt('Enter a name for the new field:');
+    if (!nameInput || !nameInput.trim()) {
+        alert('Field name is required.');
+        select.value = previousValue;
+        return;
+    }
+    const typeInput = prompt('Enter the field type (e.g., text, varchar, int, double, date, address, phone).');
+    if (!typeInput || !typeInput.trim()) {
+        alert('Field type is required.');
+        select.value = previousValue;
+        return;
+    }
+    try {
+        const newField = await createNewField(normalizedEntity, nameInput.trim(), typeInput.trim());
+        const success = await fetchFields();
+        if (!success) {
+            select.value = previousValue;
+            return;
+        }
+        const mappingValue = `${normalizedEntity === 'organization' ? 'orgField' : 'personField'}:${newField.key}`;
+        columnMappings[columnName] = mappingValue;
+        const optionExists = Array.from(select.options).some(opt => opt.value === mappingValue);
+        if (optionExists) {
+            select.value = mappingValue;
+        }
+        select.dataset.previousValue = select.value;
+        alert(`Field "${nameInput.trim()}" created successfully.`);
+    } catch (err) {
+        console.error('Error creating new field', err);
+        if (err.message && err.message !== 'Missing credentials') {
+            alert(err.message);
+        }
+        select.value = previousValue;
+    }
+}
+
+// Function to handle tab switching for fields section
+function openTab(evt, tabName) {
+    // Hide all tab contents
+    const tabcontent = document.getElementsByClassName('tabcontent');
+    for (let i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = 'none';
+    }
+
+    async function createNewField(entityType, name, fieldType) {
+        const subdomain = document.getElementById('subdomain').value.trim();
+        const token = document.getElementById('apitoken').value.trim();
+        if (!subdomain || !token) {
+            alert('Please enter subdomain and API token before adding new fields.');
+            throw new Error('Missing credentials');
+        }
+        const endpoint = entityType === 'organization' ? 'organizationFields' : 'personFields';
+        const url = `https://${subdomain}.pipedrive.com/api/v1/${endpoint}?api_token=${token}`;
+        const payload = {
+            name,
+            field_type: fieldType,
+            add_visible_flag: false
+        };
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.success) {
+            const message = (data && data.error) ? data.error : 'Failed to create field.';
+            throw new Error(message);
+        }
+        return data.data;
+    }
+
     async function handleAddNewField(select, columnName) {
         const previousValue = select.dataset.previousValue || '';
         const entityInput = prompt('Add field to which record type? Enter "organization" or "person".');
@@ -787,6 +2035,7 @@
             }
             const mappingValue = `${normalizedEntity === 'organization' ? 'orgField' : 'personField'}:${newField.key}`;
             state.columnMappings[columnName] = mappingValue;
+            columnMappings[columnName] = mappingValue;
             const optionExists = Array.from(select.options).some(opt => opt.value === mappingValue);
             if (optionExists) {
                 select.value = mappingValue;
