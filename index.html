@@ -169,6 +169,8 @@ function normalizeNameKey(value) {
     return value ? value.trim().toLowerCase() : '';
 }
 
+let isFieldsCollapsed = false;
+
 function populateMappingOptions(select) {
     select.innerHTML = '';
     const defaultOpt = document.createElement('option');
@@ -214,6 +216,43 @@ function populateMappingOptions(select) {
         });
         select.appendChild(optgroupPerson);
     }
+
+    const addNewOpt = document.createElement('option');
+    addNewOpt.value = 'add_new_field';
+    addNewOpt.textContent = 'Add new field';
+    select.appendChild(addNewOpt);
+}
+
+function refreshMappingSelectOptions() {
+    const selects = document.querySelectorAll('.mapping-select');
+    selects.forEach(select => {
+        const column = select.dataset.column;
+        const currentMapping = columnMappings[column] || '';
+        populateMappingOptions(select);
+        if (currentMapping && Array.from(select.options).some(opt => opt.value === currentMapping)) {
+            select.value = currentMapping;
+        } else {
+            select.value = '';
+            columnMappings[column] = '';
+        }
+        select.dataset.previousValue = select.value;
+    });
+}
+
+function toggleFieldsSection() {
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
+    isFieldsCollapsed = !isFieldsCollapsed;
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+}
 
     const addNewOpt = document.createElement('option');
     addNewOpt.value = 'add_new_field';
@@ -561,6 +600,63 @@ async function searchExistingRecords() {
             } catch (err) {
                 console.error('Error fetching person suggestions', err);
             }
+    for (const name of uniqueNames) {
+        try {
+            const searchTerms = [];
+            const trimmedName = name.trim();
+            if (trimmedName) {
+                searchTerms.push(trimmedName);
+                const firstWord = trimmedName.split(/\s+/)[0];
+                if (firstWord && firstWord.length > 1 && !searchTerms.includes(firstWord)) {
+                    searchTerms.push(firstWord);
+                }
+            }
+
+            const suggestions = [];
+            const seenSuggestionIds = new Set();
+            for (const term of searchTerms) {
+                const url = `https://${subdomain}.pipedrive.com/api/v1/organizations/search?term=${encodeURIComponent(term)}&fields=name&limit=5&api_token=${token}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.success && data.data && data.data.items) {
+                    data.data.items.forEach(entry => {
+                        const item = entry.item;
+                        if (!item || seenSuggestionIds.has(item.id)) return;
+                        seenSuggestionIds.add(item.id);
+                        suggestions.push(item);
+                    });
+                }
+            }
+
+            organizationSuggestions[name] = suggestions;
+            // Render suggestion block
+            const div = document.createElement('div');
+            div.className = 'org-suggestion';
+            const title = document.createElement('strong');
+            title.textContent = `Suggestions for "${name}":`;
+            div.appendChild(title);
+            const select = document.createElement('select');
+            select.dataset.name = name;
+            // first option for new organization
+            const newOpt = document.createElement('option');
+            newOpt.value = 'new';
+            newOpt.textContent = '-- Create New --';
+            select.appendChild(newOpt);
+            suggestions.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.id;
+                opt.textContent = `${item.name} (ID: ${item.id})`;
+                select.appendChild(opt);
+            });
+            div.appendChild(document.createElement('br'));
+            div.appendChild(select);
+            const helpText = document.createElement('p');
+            helpText.className = 'org-selection-help';
+            helpText.textContent = 'Selecting "-- Create New --" creates a new organization for rows with this name using the mapped organization fields. Choosing an existing organization links those rows to that record and updates its mapped organization fields with the CSV values.';
+            div.appendChild(helpText);
+            suggestionContainer.appendChild(div);
+        } catch (err) {
+            console.error('Error fetching suggestions', err);
         }
     }
 }
@@ -693,6 +789,7 @@ document.getElementById('csvFileInput').addEventListener('change', function(e) {
 });
 document.getElementById('toggleFieldsBtn').addEventListener('click', toggleFieldsSection);
 document.getElementById('searchRecordsBtn').addEventListener('click', searchExistingRecords);
+document.getElementById('searchOrgBtn').addEventListener('click', searchExistingOrganizations);
 document.getElementById('pushDataBtn').addEventListener('click', pushDataToPipedrive);
 
 async function createNewField(entityType, name, fieldType) {
