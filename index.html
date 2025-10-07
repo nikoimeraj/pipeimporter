@@ -43,6 +43,12 @@
             padding: 10px;
             margin-top: 5px;
         }
+        .org-selection-help {
+            margin-top: 6px;
+            font-size: 0.9em;
+            color: #555;
+            line-height: 1.4;
+        }
         /* Tab styles */
         .section-header {
             display: flex;
@@ -380,6 +386,10 @@ async function searchExistingOrganizations() {
             });
             div.appendChild(document.createElement('br'));
             div.appendChild(select);
+            const helpText = document.createElement('p');
+            helpText.className = 'org-selection-help';
+            helpText.textContent = 'Selecting "-- Create New --" creates a new organization for rows with this name using the mapped organization fields. Choosing an existing organization links those rows to that record and updates its mapped organization fields with the CSV values.';
+            div.appendChild(helpText);
             suggestionContainer.appendChild(div);
         } catch (err) {
             console.error('Error fetching suggestions', err);
