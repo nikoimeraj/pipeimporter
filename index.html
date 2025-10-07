@@ -38,7 +38,7 @@
         .mapping-select {
             width: 100%;
         }
-        .org-suggestion {
+        .suggestion-block {
             border: 1px solid #ddd;
             padding: 10px;
             margin-top: 5px;
@@ -142,9 +142,12 @@
 </section>
 
 <section id="search-section" style="margin-top:20px; display:none;">
-    <h2>Organization Suggestions</h2>
-    <button id="searchOrgBtn">Search Existing Organizations</button>
-    <div id="orgSuggestionSection"></div>
+    <h2>Organization &amp; Person Suggestions</h2>
+    <button id="searchRecordsBtn">Search Existing Records</button>
+    <div id="suggestionSection">
+        <div id="orgSuggestionSection"></div>
+        <div id="personSuggestionSection"></div>
+    </div>
 </section>
 
 <section id="push-section" style="margin-top:20px; display:none;">
@@ -159,6 +162,13 @@ let personFields = [];
 let csvData = [];
 let columnMappings = {}; // mapping of CSV column to field/person/organization
 let organizationSuggestions = {}; // suggestions for each organization name
+let personSuggestions = {}; // suggestions for each person name
+let isFieldsCollapsed = false;
+
+function normalizeNameKey(value) {
+    return value ? value.trim().toLowerCase() : '';
+}
+
 let isFieldsCollapsed = false;
 
 function populateMappingOptions(select) {
@@ -206,6 +216,29 @@ function populateMappingOptions(select) {
         });
         select.appendChild(optgroupPerson);
     }
+
+    const addNewOpt = document.createElement('option');
+    addNewOpt.value = 'add_new_field';
+    addNewOpt.textContent = 'Add new field';
+    select.appendChild(addNewOpt);
+}
+
+function refreshMappingSelectOptions() {
+    const selects = document.querySelectorAll('.mapping-select');
+    selects.forEach(select => {
+        const column = select.dataset.column;
+        const currentMapping = columnMappings[column] || '';
+        populateMappingOptions(select);
+        if (currentMapping && Array.from(select.options).some(opt => opt.value === currentMapping)) {
+            select.value = currentMapping;
+        } else {
+            select.value = '';
+            columnMappings[column] = '';
+        }
+        select.dataset.previousValue = select.value;
+    });
+}
+
 function toggleFieldsSection() {
     const fieldsContent = document.getElementById('fieldsContent');
     const toggleBtn = document.getElementById('toggleFieldsBtn');
@@ -397,18 +430,176 @@ function displayMappingOptions(columns) {
     document.getElementById('push-section').style.display = 'block';
 }
 
-async function searchExistingOrganizations() {
+async function searchExistingRecords() {
     const subdomain = document.getElementById('subdomain').value.trim();
     const token = document.getElementById('apitoken').value.trim();
-    const orgNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'organization_name');
-    if (!orgNameCol) {
-        alert('Please map a column to "Organization Name" before searching.');
+    if (!subdomain || !token) {
+        alert('Please enter both subdomain and token before searching.');
         return;
     }
-    const uniqueNames = [...new Set(csvData.map(row => row[orgNameCol]).filter(name => name))];
+    const orgNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'organization_name');
+    const personNameCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'person_name');
+    if (!orgNameCol && !personNameCol) {
+        alert('Please map a column to "Organization Name" or "Person Name" before searching.');
+        return;
+    }
     organizationSuggestions = {};
+    personSuggestions = {};
     const suggestionContainer = document.getElementById('orgSuggestionSection');
+    const personContainer = document.getElementById('personSuggestionSection');
     suggestionContainer.innerHTML = '';
+    personContainer.innerHTML = '';
+
+    if (orgNameCol) {
+        const uniqueOrgNames = new Map();
+        csvData.forEach(row => {
+            const raw = row[orgNameCol];
+            const key = normalizeNameKey(raw);
+            if (!key) return;
+            if (!uniqueOrgNames.has(key)) {
+                uniqueOrgNames.set(key, raw.trim());
+            }
+        });
+        if (uniqueOrgNames.size > 0) {
+            const heading = document.createElement('h3');
+            heading.textContent = 'Organization Suggestions';
+            suggestionContainer.appendChild(heading);
+        }
+        for (const [nameKey, name] of uniqueOrgNames.entries()) {
+            try {
+                const searchTerms = [];
+                const trimmedName = name.trim();
+                if (trimmedName) {
+                    searchTerms.push(trimmedName);
+                    const firstWord = trimmedName.split(/\s+/)[0];
+                    if (firstWord && firstWord.length > 1 && !searchTerms.includes(firstWord)) {
+                        searchTerms.push(firstWord);
+                    }
+                }
+
+                const suggestions = [];
+                const seenSuggestionIds = new Set();
+                for (const term of searchTerms) {
+                    const url = `https://${subdomain}.pipedrive.com/api/v1/organizations/search?term=${encodeURIComponent(term)}&fields=name&limit=5&api_token=${token}`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if (data.success && data.data && data.data.items) {
+                        data.data.items.forEach(entry => {
+                            const item = entry.item;
+                            if (!item || seenSuggestionIds.has(item.id)) return;
+                            seenSuggestionIds.add(item.id);
+                            suggestions.push(item);
+                        });
+                    }
+                }
+
+                organizationSuggestions[nameKey] = suggestions;
+                const div = document.createElement('div');
+                div.className = 'suggestion-block';
+                const title = document.createElement('strong');
+                title.textContent = `Suggestions for "${name}":`;
+                div.appendChild(title);
+                const select = document.createElement('select');
+                select.dataset.name = name;
+                select.dataset.key = nameKey;
+                select.dataset.recordType = 'organization';
+                const newOpt = document.createElement('option');
+                newOpt.value = 'new';
+                newOpt.textContent = '-- Create New --';
+                select.appendChild(newOpt);
+                suggestions.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    opt.textContent = `${item.name} (ID: ${item.id})`;
+                    select.appendChild(opt);
+                });
+                div.appendChild(document.createElement('br'));
+                div.appendChild(select);
+                const helpText = document.createElement('p');
+                helpText.className = 'org-selection-help';
+                helpText.textContent = 'Selecting "-- Create New --" creates a new organization for rows with this name using the mapped organization fields. Choosing an existing organization links those rows to that record and updates its mapped organization fields with the CSV values.';
+                div.appendChild(helpText);
+                suggestionContainer.appendChild(div);
+            } catch (err) {
+                console.error('Error fetching organization suggestions', err);
+            }
+        }
+    }
+
+    if (personNameCol) {
+        const uniquePersonNames = new Map();
+        csvData.forEach(row => {
+            const raw = row[personNameCol];
+            const key = normalizeNameKey(raw);
+            if (!key) return;
+            if (!uniquePersonNames.has(key)) {
+                uniquePersonNames.set(key, raw.trim());
+            }
+        });
+        if (uniquePersonNames.size > 0) {
+            const heading = document.createElement('h3');
+            heading.textContent = 'Person Suggestions';
+            personContainer.appendChild(heading);
+        }
+        for (const [nameKey, name] of uniquePersonNames.entries()) {
+            try {
+                const searchTerms = [];
+                const trimmedName = name.trim();
+                if (trimmedName) {
+                    searchTerms.push(trimmedName);
+                    const words = trimmedName.split(/\s+/).filter(Boolean);
+                    words.forEach(word => {
+                        if (word.length > 1 && !searchTerms.includes(word)) {
+                            searchTerms.push(word);
+                        }
+                    });
+                }
+                const suggestions = [];
+                const seenSuggestionIds = new Set();
+                for (const term of searchTerms) {
+                    const url = `https://${subdomain}.pipedrive.com/api/v1/persons/search?term=${encodeURIComponent(term)}&fields=name&limit=5&api_token=${token}`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if (data.success && data.data && data.data.items) {
+                        data.data.items.forEach(entry => {
+                            const item = entry.item;
+                            if (!item || seenSuggestionIds.has(item.id)) return;
+                            seenSuggestionIds.add(item.id);
+                            suggestions.push(item);
+                        });
+                    }
+                }
+                personSuggestions[nameKey] = suggestions;
+                const div = document.createElement('div');
+                div.className = 'suggestion-block';
+                const title = document.createElement('strong');
+                title.textContent = `Suggestions for "${name}":`;
+                div.appendChild(title);
+                const select = document.createElement('select');
+                select.dataset.name = name;
+                select.dataset.key = nameKey;
+                select.dataset.recordType = 'person';
+                const newOpt = document.createElement('option');
+                newOpt.value = 'new';
+                newOpt.textContent = '-- Create New --';
+                select.appendChild(newOpt);
+                suggestions.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    const orgName = item.organization ? (item.organization.name || item.organization) : null;
+                    opt.textContent = orgName ? `${item.name} (ID: ${item.id}, Org: ${orgName})` : `${item.name} (ID: ${item.id})`;
+                    select.appendChild(opt);
+                });
+                div.appendChild(document.createElement('br'));
+                div.appendChild(select);
+                const helpText = document.createElement('p');
+                helpText.className = 'org-selection-help';
+                helpText.textContent = 'Selecting "-- Create New --" creates a new person for rows with this name using the mapped person fields and links them to the mapped organization. Choosing an existing person links those rows to that record without changing the person\'s name while updating other mapped person fields.';
+                div.appendChild(helpText);
+                personContainer.appendChild(div);
+            } catch (err) {
+                console.error('Error fetching person suggestions', err);
+            }
     for (const name of uniqueNames) {
         try {
             const searchTerms = [];
@@ -475,34 +666,37 @@ async function pushDataToPipedrive() {
     const token = document.getElementById('apitoken').value.trim();
     const pushStatus = document.getElementById('pushStatus');
     pushStatus.textContent = 'Processing...';
-    // Build a map from organization name to selected existing org ID
-    const selects = document.querySelectorAll('#orgSuggestionSection select');
+    const orgSelects = document.querySelectorAll('#orgSuggestionSection select[data-record-type="organization"]');
+    const personSelects = document.querySelectorAll('#personSuggestionSection select[data-record-type="person"]');
     const selectedOrgMap = {};
-    selects.forEach(sel => {
-        selectedOrgMap[sel.dataset.name] = sel.value;
+    const selectedPersonMap = {};
+    orgSelects.forEach(sel => {
+        selectedOrgMap[sel.dataset.key] = sel.value;
+    });
+    personSelects.forEach(sel => {
+        selectedPersonMap[sel.dataset.key] = sel.value;
     });
     for (const row of csvData) {
-        // Determine organization
         let orgId = null;
-        let orgPayload = {};
+        const orgPayload = {};
+        let orgNameValue = '';
         for (const col in columnMappings) {
             const mapVal = columnMappings[col];
             const value = row[col];
             if (!value) continue;
             if (mapVal === 'organization_name') {
-                // check if existing or new
-                const choice = selectedOrgMap[value];
+                orgNameValue = value.trim();
+                const choice = selectedOrgMap[normalizeNameKey(value)];
                 if (choice && choice !== 'new') {
                     orgId = choice;
-                } else {
-                    orgPayload.name = value;
+                } else if (orgNameValue) {
+                    orgPayload.name = orgNameValue;
                 }
             } else if (mapVal && mapVal.startsWith('orgField:')) {
                 const fieldKey = mapVal.split(':')[1];
                 orgPayload[fieldKey] = value;
             }
         }
-        // If orgPayload has fields and orgId is null -> create org
         if (!orgId && orgPayload.name) {
             const createOrgUrl = `https://${subdomain}.pipedrive.com/api/v1/organizations?api_token=${token}`;
             const res = await fetch(createOrgUrl, {
@@ -515,7 +709,6 @@ async function pushDataToPipedrive() {
                 orgId = data.data.id;
             }
         } else if (orgId && Object.keys(orgPayload).length > 0) {
-            // update org
             const updateOrgUrl = `https://${subdomain}.pipedrive.com/api/v1/organizations/${orgId}?api_token=${token}`;
             await fetch(updateOrgUrl, {
                 method: 'PUT',
@@ -523,35 +716,52 @@ async function pushDataToPipedrive() {
                 body: JSON.stringify(orgPayload)
             });
         }
-        // Handle person
-        let personPayload = {};
+
+        const personFieldValues = {};
+        let personNameValue = '';
         for (const col in columnMappings) {
             const mapVal = columnMappings[col];
             const value = row[col];
             if (!value) continue;
             if (mapVal === 'person_name') {
-                personPayload.name = value;
+                personNameValue = value.trim();
             } else if (mapVal && mapVal.startsWith('personField:')) {
                 const fieldKey = mapVal.split(':')[1];
-                personPayload[fieldKey] = value;
+                personFieldValues[fieldKey] = value;
             }
         }
-        if (orgId) personPayload.org_id = orgId;
         let personId = null;
-        if (personPayload.name) {
-            // Create person
-            const createPersonUrl = `https://${subdomain}.pipedrive.com/api/v1/persons?api_token=${token}`;
-            const res = await fetch(createPersonUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(personPayload)
-            });
-            const data = await res.json();
-            if (data.success) {
-                personId = data.data.id;
+        if (personNameValue) {
+            const personChoice = selectedPersonMap[normalizeNameKey(personNameValue)];
+            if (personChoice && personChoice !== 'new') {
+                personId = personChoice;
+                const updatePayload = { ...personFieldValues };
+                if (orgId) updatePayload.org_id = orgId;
+                if (Object.keys(updatePayload).length > 0) {
+                    const updatePersonUrl = `https://${subdomain}.pipedrive.com/api/v1/persons/${personId}?api_token=${token}`;
+                    await fetch(updatePersonUrl, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updatePayload)
+                    });
+                }
+            } else {
+                const createPayload = { ...personFieldValues };
+                createPayload.name = personNameValue;
+                if (orgId) createPayload.org_id = orgId;
+                const createPersonUrl = `https://${subdomain}.pipedrive.com/api/v1/persons?api_token=${token}`;
+                const res = await fetch(createPersonUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(createPayload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    personId = data.data.id;
+                }
             }
         }
-        // Handle note
+
         const noteCol = Object.keys(columnMappings).find(col => columnMappings[col] === 'note');
         if (noteCol && row[noteCol]) {
             const notePayload = {
@@ -578,6 +788,7 @@ document.getElementById('csvFileInput').addEventListener('change', function(e) {
     }
 });
 document.getElementById('toggleFieldsBtn').addEventListener('click', toggleFieldsSection);
+document.getElementById('searchRecordsBtn').addEventListener('click', searchExistingRecords);
 document.getElementById('searchOrgBtn').addEventListener('click', searchExistingOrganizations);
 document.getElementById('pushDataBtn').addEventListener('click', pushDataToPipedrive);
 
