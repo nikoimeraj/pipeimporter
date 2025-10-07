@@ -206,6 +206,20 @@ function populateMappingOptions(select) {
         });
         select.appendChild(optgroupPerson);
     }
+function toggleFieldsSection() {
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
+    isFieldsCollapsed = !isFieldsCollapsed;
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+}
 
     const addNewOpt = document.createElement('option');
     addNewOpt.value = 'add_new_field';
