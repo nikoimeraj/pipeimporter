@@ -43,6 +43,34 @@
             padding: 10px;
             margin-top: 5px;
         }
+        /* Tab styles */
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f2f2f2;
+            margin-top: 10px;
+        }
+        .tab button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 10px 16px;
+            transition: 0.3s;
+        }
+        .tab button:hover {
+            background-color: #ddd;
+        }
+        .tab button.active {
+            background-color: #ccc;
+        }
+        .tabcontent {
+            display: none;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-top: none;
+        }
     </style>
 </head>
 <body>
@@ -61,7 +89,18 @@
 
 <section id="fields-section" style="display:none;">
     <h2>Organization &amp; Person Fields</h2>
-    <table id="fieldsTable"></table>
+    <!-- Tab buttons -->
+    <div class="tab">
+        <button class="tablinks" id="orgTabBtn" onclick="openTab(event, 'OrgFieldsTab')">Organization Fields</button>
+        <button class="tablinks" id="personTabBtn" onclick="openTab(event, 'PersonFieldsTab')">Person Fields</button>
+    </div>
+    <!-- Tab content -->
+    <div id="OrgFieldsTab" class="tabcontent">
+        <table id="orgFieldsTable"></table>
+    </div>
+    <div id="PersonFieldsTab" class="tabcontent">
+        <table id="personFieldsTable"></table>
+    </div>
 </section>
 
 <section id="upload-section" style="margin-top:20px;">
@@ -120,23 +159,36 @@ function fetchFields() {
 
 function displayFields() {
     const section = document.getElementById('fields-section');
-    const table = document.getElementById('fieldsTable');
+    // Show fields section
     section.style.display = 'block';
-    // Clear table
-    table.innerHTML = '';
-    const header = document.createElement('tr');
-    header.innerHTML = '<th>Entity</th><th>Name</th><th>Key</th><th>Type</th>';
-    table.appendChild(header);
+    // Prepare organization and person tables
+    const orgTable = document.getElementById('orgFieldsTable');
+    const personTable = document.getElementById('personFieldsTable');
+    // Clear existing tables
+    orgTable.innerHTML = '';
+    personTable.innerHTML = '';
+    // Build headers
+    const headerOrg = document.createElement('tr');
+    headerOrg.innerHTML = '<th>Name</th><th>Key</th><th>Type</th>';
+    orgTable.appendChild(headerOrg);
+    const headerPerson = document.createElement('tr');
+    headerPerson.innerHTML = '<th>Name</th><th>Key</th><th>Type</th>';
+    personTable.appendChild(headerPerson);
+    // Populate organization fields
     orgFields.forEach(f => {
         const row = document.createElement('tr');
-        row.innerHTML = `<td>Organization</td><td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
-        table.appendChild(row);
+        row.innerHTML = `<td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
+        orgTable.appendChild(row);
     });
+    // Populate person fields
     personFields.forEach(f => {
         const row = document.createElement('tr');
-        row.innerHTML = `<td>Person</td><td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
-        table.appendChild(row);
+        row.innerHTML = `<td>${f.name}</td><td>${f.key}</td><td>${f.field_type}</td>`;
+        personTable.appendChild(row);
     });
+    // Activate default tab (organization) if available
+    document.getElementById('OrgFieldsTab').style.display = 'block';
+    document.getElementById('orgTabBtn').classList.add('active');
 }
 
 function parseCSV(file) {
@@ -391,6 +443,23 @@ document.getElementById('csvFileInput').addEventListener('change', function(e) {
 });
 document.getElementById('searchOrgBtn').addEventListener('click', searchExistingOrganizations);
 document.getElementById('pushDataBtn').addEventListener('click', pushDataToPipedrive);
+
+// Function to handle tab switching for fields section
+function openTab(evt, tabName) {
+    // Hide all tab contents
+    const tabcontent = document.getElementsByClassName('tabcontent');
+    for (let i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = 'none';
+    }
+    // Remove active class from all buttons
+    const tablinks = document.getElementsByClassName('tablinks');
+    for (let i = 0; i < tablinks.length; i++) {
+        tablinks[i].classList.remove('active');
+    }
+    // Show the current tab and mark button as active
+    document.getElementById(tabName).style.display = 'block';
+    evt.currentTarget.classList.add('active');
+}
 </script>
 
 </body>
