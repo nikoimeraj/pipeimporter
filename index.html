@@ -44,6 +44,27 @@
             margin-top: 5px;
         }
         /* Tab styles */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .toggle-btn {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 6px 12px;
+        }
+        .toggle-btn:hover {
+            background-color: #0056b3;
+        }
+        .toggle-btn:focus {
+            outline: 2px solid #0056b3;
+            outline-offset: 2px;
+        }
         .tab {
             overflow: hidden;
             border: 1px solid #ccc;
@@ -88,18 +109,23 @@
 </section>
 
 <section id="fields-section" style="display:none;">
-    <h2>Organization &amp; Person Fields</h2>
-    <!-- Tab buttons -->
-    <div class="tab">
-        <button class="tablinks" id="orgTabBtn" onclick="openTab(event, 'OrgFieldsTab')">Organization Fields</button>
-        <button class="tablinks" id="personTabBtn" onclick="openTab(event, 'PersonFieldsTab')">Person Fields</button>
+    <div class="section-header">
+        <h2>Organization &amp; Person Fields</h2>
+        <button type="button" id="toggleFieldsBtn" class="toggle-btn" aria-expanded="true" aria-controls="fieldsContent">Hide Fields</button>
     </div>
-    <!-- Tab content -->
-    <div id="OrgFieldsTab" class="tabcontent">
-        <table id="orgFieldsTable"></table>
-    </div>
-    <div id="PersonFieldsTab" class="tabcontent">
-        <table id="personFieldsTable"></table>
+    <div id="fieldsContent">
+        <!-- Tab buttons -->
+        <div class="tab">
+            <button class="tablinks" id="orgTabBtn" onclick="openTab(event, 'OrgFieldsTab')">Organization Fields</button>
+            <button class="tablinks" id="personTabBtn" onclick="openTab(event, 'PersonFieldsTab')">Person Fields</button>
+        </div>
+        <!-- Tab content -->
+        <div id="OrgFieldsTab" class="tabcontent">
+            <table id="orgFieldsTable"></table>
+        </div>
+        <div id="PersonFieldsTab" class="tabcontent">
+            <table id="personFieldsTable"></table>
+        </div>
     </div>
 </section>
 
@@ -127,6 +153,22 @@ let personFields = [];
 let csvData = [];
 let columnMappings = {}; // mapping of CSV column to field/person/organization
 let organizationSuggestions = {}; // suggestions for each organization name
+let isFieldsCollapsed = false;
+
+function toggleFieldsSection() {
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
+    isFieldsCollapsed = !isFieldsCollapsed;
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+}
 
 function fetchFields() {
     const subdomain = document.getElementById('subdomain').value.trim();
@@ -159,8 +201,19 @@ function fetchFields() {
 
 function displayFields() {
     const section = document.getElementById('fields-section');
+    const fieldsContent = document.getElementById('fieldsContent');
+    const toggleBtn = document.getElementById('toggleFieldsBtn');
     // Show fields section
     section.style.display = 'block';
+    if (isFieldsCollapsed) {
+        fieldsContent.style.display = 'none';
+        toggleBtn.textContent = 'Show Fields';
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    } else {
+        fieldsContent.style.display = 'block';
+        toggleBtn.textContent = 'Hide Fields';
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
     // Prepare organization and person tables
     const orgTable = document.getElementById('orgFieldsTable');
     const personTable = document.getElementById('personFieldsTable');
@@ -441,6 +494,7 @@ document.getElementById('csvFileInput').addEventListener('change', function(e) {
         parseCSV(file);
     }
 });
+document.getElementById('toggleFieldsBtn').addEventListener('click', toggleFieldsSection);
 document.getElementById('searchOrgBtn').addEventListener('click', searchExistingOrganizations);
 document.getElementById('pushDataBtn').addEventListener('click', pushDataToPipedrive);
 
